@@ -52,6 +52,7 @@ pip install kubernetes redis grpcio protobuf matplotlib ipython
     ```
 
 2.  **Deploy Infrastructure**:
+
     Apply the Kubernetes manifests to set up Redis, Permissions, and the FIRM components.
     ```bash
     # Permissions and Database
@@ -98,16 +99,88 @@ The agent will proceed through two main phases:
     -   The Meta-Learner generates embeddings based on observed workload patterns.
     -   The agent continuously learns and optimizes scaling actions.
 
-## 📊 Verification
-To verify the core logic without a full cluster deployment, you can run the unit tests:
+## 🚀 Process to Run on Existing Infrastructure
+
+Since you already have a **Kubernetes Cluster** and **Docker** running, follow these steps to deploy and run the AWARE agent.
+
+### 1. Verify Your Cluster
+First, ensure your cluster is active and you can access it.
 
 ```bash
-python3 firm/verify_aware.py
+# Check if nodes are ready
+kubectl get nodes
+
+# Check existing pods (should show kube-system pods at minimum)
+kubectl get pods -A
 ```
-This tests the:
--   Meta-Learner embedding generation.
--   Bootstrapper logic switching.
--   MPA Controller scaling wrapper.
+
+### 2. Deploy AWARE Components
+Apply the configuration files to deploy the Redis database, Metric Collector, and Firm Server to your cluster.
+
+```bash
+# 1. Setup Permissions and Database
+kubectl apply -f firm/k8s/rbac.yaml
+kubectl apply -f firm/k8s/redis.yaml
+
+# 2. Deploy AWARE logic
+kubectl apply -f firm/k8s/collector.yaml
+kubectl apply -f firm/k8s/firm-server.yaml
+```
+*Note: These commands are idempotent. If you have already run them, running them again is safe and helpful to ensure everything is up to date.*
+
+### 3. Verify Deployment
+Check that the AWARE pods are running. You should see `firm-server` and `resource-collector` in the output.
+
+```bash
+kubectl get pods
+```
+-   **Pending**: The cluster is downloading images or waiting for resources. Wait a moment.
+-   **Running**: The pod is ready.
+-   **Error/CrashLoop**: Check logs with `kubectl logs <pod-name>`.
+
+### 4. Connect to the Server
+The RL agent runs on your local machine (Python) and needs to talk to the `firm-server` in the cluster. usage **Port Forwarding**:
+
+```bash
+# Open a NEW terminal window and run:
+kubectl port-forward svc/firm-server 50051:50051
+```
+> **Keep this terminal open!** If you close it, the connection breaks.
+> Expected output: `Forwarding from 127.0.0.1:50051 -> 50051`
+
+### 5. Run the RL Agent
+Now, in your **main terminal**, start the training script:
+
+```bash
+# Navigate to the correct directory if needed
+# cd cloud-computing-research
+
+python3 firm/ddpg/main.py
+```
+
+### 6. Verify Execution
+If successful, you will see output like this in your main terminal:
+```text
+Training started...
+Episode: 0 | Reward: -150
+...
+```
+This confirms the agent is receiving state from Kubernetes and sending actions back.
+
+## 📊 Verification & Analysis
+
+1.  **Unit Tests** (Logic only):
+    ```bash
+    python3 firm/verify_aware.py
+    ```
+
+2.  **Training Progress Analysis** (Requires Checkpoints):
+    If you have started training, you can analyze the rewards to check for learning improvements:
+    ```bash
+    /usr/bin/python3 firm/ddpg/analyze_training.py
+    ```
+    -   **Expected**: Rewards should increase over time.
+    -   **Bad Sign**: Constant rewards (e.g., flat 1500) indicate the agent is not learning or inputs are broken.
 
 ## 📂 Project Structure
 -   `firm/ddpg/`: Contains the Reinforcement Learning agent code (`main.py`, `ddpg.py`, `actorcritic.py`).
@@ -118,9 +191,44 @@ This tests the:
 
 ## ⚠️ Troubleshooting
 
--   **`ModuleNotFoundError`**: Ensure you are running python from the same environment where you installed `pip` packages. On some systems, use `/usr/bin/python3`.
--   **Connection Refused**: Check if `kubectl port-forward` is running and active.
--   **ImagePullBackOff**: Ensure `firm-server:latest` was built locally and is available to your Kubernetes cluster (easy with Docker Desktop; for Minikube use `eval $(minikube docker-env)` before building).
+-   **`ModuleNotFoundError`**:
+    -   Cause: Python environment mismatch.
+    -   Fix: Use the system Python.
+    ```bash
+    /usr/bin/python3 firm/ddpg/main.py
+    ```
+
+-   **`kubectl: command not found`**:
+    -   Cause: `kubectl` is not installed or not in PATH.
+    -   Fix: Install via snap.
+    ```bash
+    sudo snap install kubectl --classic
+    ```
+
+-   **`Error from server (NotFound): services "firm-server" not found`**:
+    -   Cause: The AWARE components are not deployed in the cluster.
+    -   Fix: Deploy the manifests.
+    ```bash
+    kubectl apply -f firm/k8s/rbac.yaml
+    kubectl apply -f firm/k8s/redis.yaml
+    kubectl apply -f firm/k8s/collector.yaml
+    kubectl apply -f firm/k8s/firm-server.yaml
+    ```
+
+-   **`Connection Refused`** or **`grpc._channel._InactiveRpcError`**:
+    -   Cause: The local agent cannot reach the cluster.
+    -   Fix: Ensure port forwarding is running in a separate terminal.
+    ```bash
+    kubectl port-forward svc/firm-server 50051:50051
+    ```
+
+-   **`ImagePullBackOff`**:
+    -   Cause: The `firm-server` image is missing or cannot be pulled.
+    -   Fix: Build the image locally (if using Docker Desktop/Minikube).
+    ```bash
+    docker build -t firm-server:latest -f Dockerfile .
+    # For Minikube, run `eval $(minikube docker-env)` first.
+    ```
 
 ---
 *Based on the paper: "AWARE: Automate Workload Autoscaling with Reinforcement Learning in Production Cloud Systems", USENIX ATC '23.*
