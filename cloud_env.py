@@ -38,7 +38,7 @@ class CloudEnv:
     def generate_task(self):
 
         cpu = random.uniform(0.1, 0.5)
-        duration = random.randint(2, 5)
+        duration = random.randint(2,5)
 
         return [cpu, duration]
 
@@ -65,7 +65,7 @@ class CloudEnv:
         # Scheduling
         if len(self.queue) > 0:
 
-            vm_id = random.randint(0, self.vms - 1)
+            vm_id = random.randint(0, self.vms-1)
 
             task = self.queue.pop(0)
 
@@ -79,7 +79,7 @@ class CloudEnv:
 
 
         # Add new tasks
-        for _ in range(random.randint(0, 2)):
+        for _ in range(random.randint(0,2)):
 
             self.queue.append(self.generate_task())
 
@@ -89,7 +89,12 @@ class CloudEnv:
 
 
         # Reward
-        reward = -(cost + delay + len(self.queue))
+        reward = -(
+            0.5 * cost +
+            0.3 * delay +
+            0.2 * len(self.queue)
+            )
+
 
 
         self.time += 1

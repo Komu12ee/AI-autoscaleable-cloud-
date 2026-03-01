@@ -81,4 +81,5 @@ plt.ylabel("Total Reward")
 plt.title("RL vs Baseline Performance")
 
 plt.legend()
-plt.show()
+plt.savefig('results.png')
+print("Simulation complete. Results saved to results.png")
